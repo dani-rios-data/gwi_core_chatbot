@@ -19,15 +19,48 @@ interface FileInfo {
   url: string;
 }
 
+interface ContextData {
+  core: string;
+  travel: string;
+  usa: string;
+}
+
 function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
+  const [contextData, setContextData] = useState<ContextData | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // Load context data on component mount
+  useEffect(() => {
+    const loadContextData = async () => {
+      try {
+        const [coreResponse, travelResponse, usaResponse] = await Promise.all([
+          fetch('/context/GWI_CORE_context.txt'),
+          fetch('/context/GWI_TRAVEL_context.txt'),
+          fetch('/context/GWI_USA_context.txt')
+        ]);
+
+        const contextData: ContextData = {
+          core: await coreResponse.text(),
+          travel: await travelResponse.text(),
+          usa: await usaResponse.text()
+        };
+
+        setContextData(contextData);
+        console.log('Context data loaded successfully');
+      } catch (error) {
+        console.error('Error loading context data:', error);
+      }
+    };
+
+    loadContextData();
+  }, []);
 
   // Improved auto scroll to bottom
   useEffect(() => {
@@ -130,8 +163,40 @@ function App() {
       let suggestions: string[] = [];
       let booleanOutput = '';
 
-      // Generate response based on input
-      if (userQuestion.includes('meta') || userQuestion.includes('facebook') || userQuestion.includes('millennial women') || userQuestion.includes('sustainability')) {
+      // Use context data if available for more accurate responses
+      if (contextData) {
+        // Search through context data for relevant information
+        const searchContext = (query: string): string => {
+          const lowerQuery = query.toLowerCase();
+          let relevantContext = '';
+          
+          // Search in core context first
+          if (contextData.core.toLowerCase().includes(lowerQuery)) {
+            const lines = contextData.core.split('\n');
+            const relevantLines = lines.filter(line => 
+              line.toLowerCase().includes(lowerQuery) || 
+              lines.indexOf(line) > 0 && lines[lines.indexOf(line) - 1].toLowerCase().includes(lowerQuery)
+            );
+            relevantContext += relevantLines.slice(0, 5).join('\n') + '\n';
+          }
+          
+          return relevantContext;
+        };
+
+        // Try to find context-based response
+        const contextInfo = searchContext(userQuestion);
+        if (contextInfo.trim()) {
+          responseText = `Based on GWI Core Q2 2024 data:\n\n${contextInfo}\n\nWould you like me to help you create a Boolean logic expression based on this information?`;
+          suggestions = [
+            "Create Boolean logic for this audience",
+            "Show more detailed variables",
+            "Map to specific platform targeting"
+          ];
+        }
+      }
+
+             // Generate response based on input (fallback if no context match)
+      if (!responseText && (userQuestion.includes('meta') || userQuestion.includes('facebook') || userQuestion.includes('millennial women') || userQuestion.includes('sustainability'))) {
         responseText = `I've analyzed your audience definition for Millennial women interested in sustainability. Here's the translation using GWI Core Q2 2024 variables:
 
 **Audience Interpretation:**
@@ -145,14 +210,14 @@ function App() {
 • Purchase behavior: product_purchase_organic=1`;
 
         booleanOutput = "gender=='Female' AND age>=25 AND age<=40 AND interest_environment==1 AND lifestyle_sustainability==1 AND product_purchase_organic==1";
-        
+
         suggestions = [
           "Add income targeting to this audience",
           "Include social media behavior variables",
           "Map this to LinkedIn professional targeting"
         ];
       }
-      else if (userQuestion.includes('professional') || userQuestion.includes('linkedin') || userQuestion.includes('managers')) {
+      else if (!responseText && (userQuestion.includes('professional') || userQuestion.includes('linkedin') || userQuestion.includes('managers'))) {
         responseText = `Professional audience translation completed. Here's the GWI Core Boolean logic for technology managers:
 
 **Audience Breakdown:**
@@ -166,14 +231,14 @@ function App() {
 • Social platform usage patterns`;
 
         booleanOutput = "gender=='Male' AND age>=30 AND age<=45 AND job_level=='Manager' AND industry=='Technology' AND linkedin_usage=='Active'";
-        
+
         suggestions = [
           "Add education level requirements",
           "Include company size targeting",
           "Map similar audience for other platforms"
         ];
       }
-      else if (userQuestion.includes('validation') || userQuestion.includes('verify') || userQuestion.includes('variables')) {
+      else if (!responseText && (userQuestion.includes('validation') || userQuestion.includes('verify') || userQuestion.includes('variables'))) {
         responseText = `Variable validation completed for GWI Core Q2 2024 fields:
 
 **Field Verification Results:**
@@ -194,7 +259,7 @@ All suggested fields are verified GWI Core Q2 2024 variables.`;
           "Help with product purchase fields"
         ];
       }
-      else if (userQuestion.includes('parents') || userQuestion.includes('premium') || userQuestion.includes('high income')) {
+      else if (!responseText && (userQuestion.includes('parents') || userQuestion.includes('premium') || userQuestion.includes('high income'))) {
         responseText = `Detailed explanation for young parents with high income buying premium baby products:
 
 **Step 1: Demographic Segmentation**
@@ -211,14 +276,14 @@ All suggested fields are verified GWI Core Q2 2024 variables.`;
 Each characteristic maps to documented GWI Core fields for precise targeting.`;
 
         booleanOutput = "age>=25 AND age<=40 AND household_income>='$75K' AND number_of_children>0 AND product_purchase_premium_baby==1";
-        
+
         suggestions = [
           "Add brand awareness variables",
           "Include media consumption patterns",
           "Map similar audience for different product categories"
         ];
       }
-      else {
+      else if (!responseText) {
         responseText = `I understand you're asking about audience replication. Let me help you with GWI Core Boolean logic translation.
 
 **What I can help with:**
@@ -393,7 +458,7 @@ Please describe the specific audience you'd like to translate, including:
                 )}
                 
                 <div className="message-timestamp">
-                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>
 
@@ -466,10 +531,10 @@ Please describe the specific audience you'd like to translate, including:
             </div>
             
             <div className="input-wrapper">
-              <textarea
+            <textarea
                 className="input-field"
                 placeholder="Describe the audience you want to translate to GWI Core variables..."
-                value={inputMessage}
+              value={inputMessage}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
                 rows={1}
@@ -483,8 +548,8 @@ Please describe the specific audience you'd like to translate, including:
                   multiple
                   accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.json"
                   style={{ display: 'none' }}
-                />
-                <button 
+            />
+            <button
                   className="attach-button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isLoading}
@@ -498,12 +563,12 @@ Please describe the specific audience you'd like to translate, including:
                 >
                   <Send size={16} />
                   <span>Translate</span>
-                </button>
+            </button>
               </div>
             </div>
           </div>
         </div>
-      </div>
+        </div>
     </div>
   )
 }
